@@ -70,14 +70,14 @@ class Node(ABC):
         self._custom_outputs.append((call_back, label))
 
     def add_input(self, label: str = "", type: str = "any", default_data: Optional[NodePackage] = None) -> int:
-        node_input = NodeInput(label or f"Input {len(self.inputs)+1}", type)
+        node_input = NodeInput(label.capitalize() or f"Input {len(self.inputs)+1}", type.lower())
         node_input.latest_data = default_data
         idx = len(self.inputs)
         self.inputs.append(node_input)
         return idx
 
     def add_output(self, label: str = "", type: str = "any") -> int:
-        node_output = NodeOutput(label or f"Output {len(self.outputs)+1}", type)
+        node_output = NodeOutput(label.capitalize() or f"Output {len(self.outputs)+1}", type.lower())
         idx = len(self.outputs)
         self.outputs.append(node_output)
         return idx

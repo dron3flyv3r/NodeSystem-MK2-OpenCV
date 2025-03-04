@@ -23,7 +23,8 @@ class NodePackage:
         if len(old_shape) == 3 and old_shape[2] == 3:
             img = cv2.cvtColor(img, cv2.COLOR_BGR2RGBA)
         elif len(old_shape) == 2:
-            img = cv2.cvtColor(img, cv2.COLOR_GRAY2RGBA)
+            if len(old_shape) == 2 or (len(old_shape) == 3 and old_shape[2] != 4):
+                img = cv2.cvtColor(img, cv2.COLOR_GRAY2RGBA)
         
         # Calculate the new size while preserving the aspect ratio
         old_height, old_width = old_shape[:2]

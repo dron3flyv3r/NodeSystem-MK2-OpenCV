@@ -165,8 +165,6 @@ class NodeEditor:
         # app_data contains [start_attr, end_attr]
         start_attr, end_attr = app_data
         link_id = dpg.generate_uuid()
-        dpg.add_node_link(start_attr, end_attr, parent=sender, tag=link_id)
-        self.node_links.append((link_id, start_attr, end_attr))
 
         # Set up the connections between nodes
         start_node, start_output_idx = self._find_node_output_by_id(start_attr)
@@ -184,6 +182,9 @@ class NodeEditor:
                 print(f"Error: Type mismatch ({output_type} -> {input_type}). Link aborted.")
                 return
 
+        dpg.add_node_link(start_attr, end_attr, parent=sender, tag=link_id)
+        self.node_links.append((link_id, start_attr, end_attr))
+        
         if start_node and end_node and start_output_idx is not None and end_input_idx is not None:
             start_node.outputs[start_output_idx].connected_nodes.append(end_node)
             end_node.inputs[end_input_idx].connected_node = start_node
@@ -275,6 +276,7 @@ class NodeEditor:
             for link_id in links_to_remove:
                 self._delink_nodes_callback(None, link_id)
             # Delete the node
+            node._close_preview(None, None)
             dpg.delete_item(node_id)
             self.nodes.remove(node)
         

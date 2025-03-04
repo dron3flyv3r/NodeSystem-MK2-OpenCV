@@ -5,9 +5,22 @@ from NodeEditor import Node, NodePackage, dpg
 class Invert(Node):
     def __init__(self):
         super().__init__("Invert", "Operations", 200)
-        self.add_input("image")
-        self.add_output("image")
+        self.add_input("image/mask")
+        self.add_output("image/mask")
+
+    def compose(self):
+        dpg.add_text("Inverts the colors/intensity of the image")
+
+    def execute(self, inputs: list[NodePackage]) -> list[NodePackage]:
+        data = inputs[0]
+        image = data.image_or_mask
         
+        if image is None:
+            return [NodePackage()]
+
+        result = cv2.bitwise_not(image)
+        return [NodePackage(image_or_mask=result)]
+
     def viewer(self, outputs: list[NodePackage]):
         data = outputs[0]
         img_tag = dpg.generate_uuid()
@@ -21,11 +34,3 @@ class Invert(Node):
         image_rgba /= 255
 
         dpg.set_value(img_tag, image_rgba.flatten())
-
-    def execute(self, inputs: list[NodePackage]) -> list[NodePackage]:
-        data = inputs[0]
-        image = data.image_or_mask
-
-        inverted_image = cv2.bitwise_not(image)
-
-        return [NodePackage(image_or_mask=inverted_image)]
