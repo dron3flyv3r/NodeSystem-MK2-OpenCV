@@ -344,8 +344,14 @@ class NodeEditor:
                 return
         
         mice_pos = dpg.get_mouse_pos(local=False)
+        
+        # Adjust mouse position by the node editor's position
+        node_editor_pos = dpg.get_item_pos(self.node_editor)
+        adjusted_mouse_pos = [mice_pos[0] - node_editor_pos[0], mice_pos[1] - node_editor_pos[1]]
+        adjusted_mouse_pos = [float(i) for i in adjusted_mouse_pos]
+        
         dpg.configure_item(self.right_click_menu, show=True)
-        dpg.set_item_pos(self.right_click_menu, [mice_pos[0], mice_pos[1]])
+        dpg.set_item_pos(self.right_click_menu, adjusted_mouse_pos)
         
     def left_click_cb(self, sender, app_data):
         if not dpg.get_item_state(self.right_click_menu).get("visible", False):
@@ -364,10 +370,11 @@ class NodeEditor:
         dpg.configure_item(self.right_click_menu, show=False)
         
     def control_click_cb(self, sender, app_data):
-        if not dpg.is_key_down(dpg.mvKey_Control):
+        if not dpg.is_key_down(dpg.mvKey_LControl):
             return
         # get the node that was clicked on
-        for node in self.nodes:
+        # Iterate in reverse order to prioritize nodes drawn on top
+        for node in reversed(self.nodes):
             node_pos = node._node_pos
             node_size = node._node_size
             mouse_pos = dpg.get_mouse_pos(local=False)
@@ -460,9 +467,9 @@ class NodeEditor:
         # self._copied_nodes_data = None
 
     def copy_cb(self, sender, app_data):
-        if dpg.is_key_down(dpg.mvKey_Control) and dpg.is_key_down(dpg.mvKey_C):
+        if dpg.is_key_down(dpg.mvKey_LControl) and dpg.is_key_down(dpg.mvKey_C):
             self.copy_selected_nodes()
-        elif dpg.is_key_down(dpg.mvKey_Control) and dpg.is_key_down(dpg.mvKey_V):
+        elif dpg.is_key_down(dpg.mvKey_LControl) and dpg.is_key_down(dpg.mvKey_V):
             self.paste_copied_nodes()
 
     def push_undo_state(self):
@@ -596,17 +603,17 @@ class NodeEditor:
             dpg.add_key_press_handler(key=dpg.mvKey_Delete, callback=self._delete_selected_node)
             dpg.add_mouse_click_handler(button=dpg.mvMouseButton_Right, callback=self.right_click_cb)
             dpg.add_mouse_click_handler(button=dpg.mvMouseButton_Left, callback=self.left_click_cb)
-            dpg.add_key_press_handler(dpg.mvKey_Control)
+            dpg.add_key_press_handler(dpg.mvKey_LControl)
             dpg.add_key_press_handler(dpg.mvKey_C, callback=self.copy_cb)
             dpg.add_key_press_handler(dpg.mvKey_V, callback=self.copy_cb)
             dpg.add_mouse_click_handler(button=dpg.mvMouseButton_Left, callback=self.control_click_cb)
             dpg.add_key_press_handler(
                 key=dpg.mvKey_Z, 
-                callback=lambda: self.undo() if dpg.is_key_down(dpg.mvKey_Control) else None
+                callback=lambda: self.undo() if dpg.is_key_down(dpg.mvKey_LControl) else None
             )
             dpg.add_key_press_handler(
                 key=dpg.mvKey_Y, 
-                callback=lambda: self.redo() if dpg.is_key_down(dpg.mvKey_Control) else None
+                callback=lambda: self.redo() if dpg.is_key_down(dpg.mvKey_LControl) else None
             )
             
             

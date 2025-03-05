@@ -191,8 +191,6 @@ class Node(ABC):
 
         # Position the preview window
         node_pos = self._node_pos
-        node_size = self._node_size
-        view_pos = dpg.get_item_pos(self._node_preview_window_id)
         view_size = dpg.get_item_rect_size(self._node_preview_window_id)
 
         dpg.set_item_pos(

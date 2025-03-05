@@ -83,7 +83,6 @@ class KMeanClustering(Node):
         return [NodePackage(image_or_mask=result)]
 
     def viewer(self, outputs: list[NodePackage]):
-        print("KMeans Clustering Viewer")
         data = outputs[0]
         img_tag = dpg.generate_uuid()
         with dpg.texture_registry():

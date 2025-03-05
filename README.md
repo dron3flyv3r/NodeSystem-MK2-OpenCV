@@ -35,6 +35,19 @@ python NodeEditor/NodeEditor.py
 
 This will open the main viewport where you can add, connect, and manage nodes.
 
+## Examples
+
+#### Basic usage with basic operations
+Here you can see a simple example of the basic operations that are included in the node system.
+<!-- Open the images/operations.png -->
+![operations](images/operations.png)
+
+#### Templateing example
+Here you can see a simple templating example, where you can create a template and use it to find where in a image the template is located.
+
+<!-- Open the images/template.png -->
+![template](images/template.png)
+
 ## Creating a New Node
 
 To create a new node, follow these steps:
