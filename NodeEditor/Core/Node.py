@@ -49,13 +49,21 @@ class Node(ABC):
         self._custom_outputs: list[tuple[Callable[[Any], Any], str]] = []
 
         self._last_update_call = 0
-        self._min_delay = 50  # ms
+        self._min_delay = 30  # ms - reduced minimum delay for more responsive updates
         self._update_call: bool = False
+        
+        # Cache to store computed results for better performance
+        self._cached_outputs = None
+        self._cache_valid = False
+        self._cache_timestamp = 0
+        self._cache_ttl = 1.0  # seconds
+
+        # More efficient update scheduling
+        self._update_scheduled = False
+        threading.Thread(target=self._update_thread, daemon=True).start()
 
         self._node_delete_callback: Callable = lambda *args: None
         self._node_duplicate_callback: Callable = lambda *args: None
-
-        threading.Thread(target=self._update_thread, daemon=True).start()
 
     def on_init(self):
         pass
@@ -90,32 +98,40 @@ class Node(ABC):
         pass
 
     def reset(self):
-        pass
+        # Clear cache and force update when reset
+        self._cache_valid = False
+        self._cached_outputs = None
+        self.update()
 
     def update(self):
+        # Invalidate cache and schedule update
+        self._cache_valid = False
         self._update_call = True
         self._last_update_call = time.time()
 
     def viewer(self, outputs: list[NodePackage]):
         for o in outputs:
             with dpg.group(horizontal=True):
-                self.view(o)
+                try:
+                    self.view(o)
+                except NotImplementedError:
+                    pass
                 
     def view(self, output: NodePackage):
-        raise NotImplementedError("View not implemented")
+        raise NotImplementedError("Viewer not implemented")
 
     def _close_preview(self, sender, app_data):
         if dpg.does_item_exist(self._node_preview_window_id):
             dpg.delete_item(self._node_preview_window_id)
 
     def _view(self, outputs: list[NodePackage] | None = None):
-
         if self._node_editor_id is None:
             return
 
         if len(self.outputs) == 0:
             return
 
+        # Use cached outputs if available, otherwise compute new ones
         if outputs is None:
             inputs = []
             for node_input in self.inputs:
@@ -126,7 +142,16 @@ class Node(ABC):
 
             if len(inputs) != len(self.inputs):
                 return
-            outputs = self.execute(copy.deepcopy(inputs))
+            
+            # If cache valid and recent, use cached outputs
+            if self._cache_valid and time.time() - self._cache_timestamp < self._cache_ttl:
+                outputs = self._cached_outputs
+            else:
+                outputs = self.execute(copy.deepcopy(inputs))
+                
+        if outputs is None:
+            print("No outputs")
+            return
 
         if len(outputs) != len(self.outputs):
             return
@@ -164,7 +189,7 @@ class Node(ABC):
         if not dpg.does_item_exist(self._node_preview_window_id):
             return
 
-        # Do the the node is north of the current node make sure that the size of the view node is the don't overlap have a padding of 10
+        # Position the preview window
         node_pos = self._node_pos
         node_size = self._node_size
         view_pos = dpg.get_item_pos(self._node_preview_window_id)
@@ -175,44 +200,69 @@ class Node(ABC):
             [node_pos[0], node_pos[1] - view_size[1] - 10],
         )
 
-
     def _update_thread(self):
         while True:
             self._update()
-            time.sleep(0.01) if self._update_call else time.sleep(0.2)
+            # More adaptive sleep to reduce CPU usage
+            # Process faster when updates are needed, sleep more when idle
+            time.sleep(0.005 if self._update_call else 0.2)
 
     def _update(self):
-        if (
-            time.time() - self._last_update_call > self._min_delay * 0.001
-            and self._update_call
-        ):
+        current_time = time.time()
+        if (current_time - self._last_update_call > self._min_delay * 0.001 and self._update_call):
             self._update_call = False
             self._call_output_nodes()
 
     def force_update(self):
+        # Always invalidate the cache on force update
+        self._cache_valid = False 
+        self._update_call = True
+        self._cached_outputs = None
         self._call_output_nodes()
 
     def _call_output_nodes(self):
         self._keep_error = False
 
+        # Gather inputs
         inputs = []
+        all_inputs_valid = True
+        
         for node_input in self.inputs:
             if node_input.latest_data is None:
+                all_inputs_valid = False
                 self._on_warning()
-                return
+                break
             inputs.append(node_input.latest_data)
+        
+        if not all_inputs_valid:
+            return
+        
+        # Skip execution if all inputs aren't valid
+        if len(inputs) != len(self.inputs):
+            return
 
         try:
             try:
                 dpg.bind_item_theme(self._node_id, executing_theme)
             except Exception as e:
                 print("Error setting theme:", e)
+                
             s_time = time.time()
-            outputs = (
-                self.execute(copy.deepcopy(inputs))
-                if not self._skip_execution
-                else inputs
-            )
+            
+            # Use cached result if valid, otherwise compute
+            if self._cache_valid and time.time() - self._cache_timestamp < self._cache_ttl:
+                outputs = self._cached_outputs
+            else:
+                outputs = (
+                    self.execute(copy.deepcopy(inputs))
+                    if not self._skip_execution
+                    else inputs
+                )
+                # Cache the results for future use
+                self._cached_outputs = outputs
+                self._cache_valid = True
+                self._cache_timestamp = time.time()
+                
             self._on_success() if not self._keep_error else None
             dpg.set_value(
                 self._time_text_id,
@@ -222,31 +272,40 @@ class Node(ABC):
             traceback.print_exc()
             self.on_error(str(e))
             return
+        
+        if outputs is None:
+            print("No outputs")
+            return
 
+        # Update preview if it's open
         if dpg.does_item_exist(self._node_preview_window_id):
             self._view(outputs)
 
-        futures = []
-        with future.ThreadPoolExecutor() as executor:
-            for idx, output_data in enumerate(outputs):
-                if idx < len(self.outputs):
-                    node_output = self.outputs[idx]
-                    for connected_node in node_output.connected_nodes:
-                        connected_node._set_latest_input(output_data, self, idx)
-                        futures.append(
-                            executor.submit(connected_node._call_output_nodes)
-                        )
-        future.wait(futures, return_when=future.ALL_COMPLETED)
+        # Batch processing for connected nodes to avoid thread congestion
+        connected_updates = []
+        for idx, output_data in enumerate(outputs):
+            if idx < len(self.outputs):
+                node_output = self.outputs[idx]
+                for connected_node in node_output.connected_nodes:
+                    # Update connected node's input with new data
+                    connected_node._set_latest_input(output_data, self, idx)
+                    connected_updates.append(connected_node)
+                    
+        if len(connected_updates) == 0:
+            return
+        
+        # Schedule updates for all connected nodes - process in parallel with limitations
+        with future.ThreadPoolExecutor(max_workers=min(8, len(connected_updates))) as executor:
+            futures = [executor.submit(node.update) for node in connected_updates]
+            future.wait(futures, return_when=future.ALL_COMPLETED)
 
-    def _set_latest_input(
-        self, data: NodePackage, from_node: "Node", from_output_idx: int
-    ):
+    def _set_latest_input(self, data: NodePackage, from_node: "Node", from_output_idx: int):
         for node_input in self.inputs:
-            if (
-                node_input.connected_node == from_node
-                and node_input.connected_output_idx == from_output_idx
-            ):
+            if (node_input.connected_node == from_node and 
+                node_input.connected_output_idx == from_output_idx):
                 node_input.latest_data = data
+                # Invalidate cache since an input has changed
+                self._cache_valid = False
                 break
 
     def _compose(self, parent: int | str = 0, types: list[str] = []):
@@ -297,7 +356,6 @@ class Node(ABC):
                 dpg.add_spacer(height=10)
                 dpg.add_text("", wrap=self._max_width, tag=self._time_text_id)
                 
-
             # Compose output attributes
             for node_output in self.outputs:
                 shape = 0
@@ -360,11 +418,15 @@ class Node(ABC):
         if input_idx < len(self.inputs):
             self.inputs[input_idx].connected_node = None
             self.inputs[input_idx].latest_data = None
+            self.inputs[input_idx].connected_output_idx = None  # Reset this field too
+            # Invalidate cache since an input was removed
+            self._cache_valid = False
         else:
             print("Invalid input index")
 
     def _toggle_skip_execution(self):
         self._skip_execution = not self._skip_execution
+        self._cache_valid = False  # Invalidate cache on execution mode change
         self.update()
 
     @property

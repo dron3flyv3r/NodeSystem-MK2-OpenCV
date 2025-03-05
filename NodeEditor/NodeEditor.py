@@ -112,8 +112,21 @@ class NodeEditor:
                 # Update node connections
                 start_node.outputs[start_output_idx].connected_nodes.append(end_node)
                 end_node.inputs[end_input_idx].connected_node = start_node
+                end_node.inputs[end_input_idx].connected_output_idx = start_output_idx
             else:
                 print("Error: Invalid node indices in link data.")
+                
+        # Trigger updates after all connections are established
+        # Process source nodes (nodes with no inputs or unconnected inputs) first
+        source_nodes = []
+        for node in self.nodes:
+            has_all_inputs_connected = all(input_.connected_node is not None for input_ in node.inputs)
+            if not node.inputs or not has_all_inputs_connected:
+                source_nodes.append(node)
+        
+        # Update the source nodes first to start the data flow
+        for node in source_nodes:
+            node.force_update()
         
     def clear_workspace(self):
         # Delete all the links
@@ -189,6 +202,9 @@ class NodeEditor:
             start_node.outputs[start_output_idx].connected_nodes.append(end_node)
             end_node.inputs[end_input_idx].connected_node = start_node
             end_node.inputs[end_input_idx].connected_output_idx = start_output_idx
+            
+            # Immediately trigger an update for better responsiveness
+            start_node.force_update()
         else:
             print("Error: Nodes not found for linking.")
         
@@ -207,7 +223,12 @@ class NodeEditor:
                     if end_node.inputs[end_input_idx].connected_node == start_node:
                         end_node.inputs[end_input_idx].connected_node = None
                         end_node.inputs[end_input_idx].latest_data = None
+                        end_node.inputs[end_input_idx].connected_output_idx = None
                 self.node_links.pop(idx)
+                
+                # Update the end node to show warning if needed
+                if end_node:
+                    end_node._on_warning()
                 break
         
     def compose(self, parent: str | int = ""):
@@ -555,6 +576,18 @@ class NodeEditor:
                 end_node.inputs[end_input_idx].connected_node = start_node
             else:
                 print("Error: Invalid node indices in link data.")
+                
+        # Trigger updates after all connections are established
+        # Process source nodes (nodes with no inputs or unconnected inputs) first
+        source_nodes = []
+        for node in self.nodes:
+            has_all_inputs_connected = all(input_.connected_node is not None for input_ in node.inputs)
+            if not node.inputs or not has_all_inputs_connected:
+                source_nodes.append(node)
+        
+        # Update the source nodes first to start the data flow
+        for node in source_nodes:
+            node.force_update()
 
     def start(self):
         self._setup_menu()
