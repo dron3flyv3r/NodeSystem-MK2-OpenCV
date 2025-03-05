@@ -73,7 +73,6 @@ class TemplateCreator(Node):
             width=185
         )
         
-        dpg.add_separator()
         dpg.add_text("Save Template:")
         dpg.add_input_text(
             label="Name",
@@ -89,7 +88,6 @@ class TemplateCreator(Node):
             width=185
         )
         
-        dpg.add_separator()
         dpg.add_text("Load Template:")
         dpg.add_combo(
             items=self.templates_list,
